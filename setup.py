@@ -12,6 +12,7 @@ kwargs = {
     'license': 'BSD',
     'keywords': 'types inference conversion strings',
     'url': 'https://github.com/shasthemass/strconv/',
+    'install_requires': ['python-dateutil'],
     'classifiers': [
         'Development Status :: 3 - Alpha',
         'License :: OSI Approved :: BSD License',
