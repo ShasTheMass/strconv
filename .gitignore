@@ -7,3 +7,4 @@ dist
 MANIFEST
 .idea*
 /pyproject.toml
+.pytest_cache

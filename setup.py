@@ -3,7 +3,7 @@ import strconv
 
 kwargs = {
     'py_modules': ['strconv'],
-    'test_suite': 'test_strconv',
+    'test_suite': 'tests/test_strconv',
     'name': 'strconv',
     'version': strconv.__version__,
     'author': 'Byron Ruth, Shaswar Baban',

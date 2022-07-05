@@ -63,6 +63,9 @@ class ConvertTestCase(unittest.TestCase):
 
 class InferTestCase(unittest.TestCase):
     def test_infer(self):
+        self.assertEqual(strconv.infer(''), 'none')
+        self.assertEqual(strconv.infer('None'), 'none')
+        self.assertEqual(strconv.infer(None), 'none')
         self.assertEqual(strconv.infer('-3'), 'int')
         self.assertEqual(strconv.infer('+0.4'), 'float')
         self.assertEqual(strconv.infer('true'), 'bool')
@@ -78,6 +81,9 @@ class InferTestCase(unittest.TestCase):
                          datetime(2018, 3, 1, 0, 0, 0))
 
     def test_infer_converted(self):
+        self.assertEqual(strconv.infer('', converted=True), type(None))
+        self.assertEqual(strconv.infer('None', converted=True), type(None))
+        self.assertEqual(strconv.infer(None, converted=True), type(None))
         self.assertEqual(strconv.infer('-3', converted=True), int)
         self.assertEqual(strconv.infer('+0.4', converted=True), float)
         self.assertEqual(strconv.infer('true', converted=True), bool)
@@ -87,36 +93,72 @@ class InferTestCase(unittest.TestCase):
                          converted=True), datetime)
 
     def test_infer_series(self):
-        c0 = strconv.infer_series(['+0.4', '1.0', '0.'])
-        self.assertEqual(c0.most_common(), [('float', 3)])
-        self.assertEqual(c0.types['float'].freq(), 1.0)
+        c0 = strconv.infer_series(['+0.4', '1.0', '0.', 'None'])
+        c1 = strconv.infer_series(['', 'None', None])
+        self.assertEqual(c0.most_common(), [('float', 3), ('none', 1)])
+        self.assertEqual(c0.types['float'].freq(), 0.75)
         self.assertEqual(c0.types['float'].count, 3)
         self.assertEqual(c0.types['float'].size, 10)  # default size
+        self.assertEqual(c1.types['none'].count, 3)
+        self.assertEqual(c1.types['none'].freq(), 1.0)
+        self.assertEqual(c1.types['none'].size, 10)
+        self.assertEqual(c1.inferred_col_type(), [('empty', 3)])
 
         self.assertEqual(strconv.infer_series([]), None)
 
     def test_infer_series_n(self):
-        c0 = strconv.infer_series(['+0.4', '1.0', '0.'], n=1)
+        c0 = strconv.infer_series(['+0.4', '1.0', '0.', 'None'], n=1)
+        c1 = strconv.infer_series(['+0.4', '1.0', '0.', 'None'], n=2)
+        c2 = strconv.infer_series(['', 'None', None], n=2)
+        c3 = strconv.infer_series(['', 'None', None], n=3)
         self.assertEqual(c0.most_common(), [('float', 1)])
         self.assertEqual(c0.types['float'].count, 1)
+        self.assertEqual(c1.most_common(), [('float', 2)])
+        self.assertEqual(c0.inferred_col_type(), [('float', 1)])
+        self.assertEqual(c1.inferred_col_type(), [('float', 2)])
+        self.assertEqual(c2.inferred_col_type(), [('empty', 2)])
+        self.assertEqual(c3.inferred_col_type(), [('empty', 3)])
 
     def test_infer_matrix(self):
-        c0, c1, c2 = strconv.infer_matrix([['+0.4', 'true', '50']])
-        self.assertEqual(c0.most_common(), [('float', 1)])
-        self.assertEqual(c0.types['float'].freq(), 1.0)
+        c0, c1, c2, c3, c4, c5, c6, c7 = strconv.infer_matrix([
+            ['+0.4',    'true', '50', None,       '1/1/2000', 'None',       None,   None],
+            ['1',       'true', '50', None,       '1/1/2000', 'None',       None,   None],
+            ['1',       'true', '50', None,       '1/1/2000', 'None',       None,   '14.3'],
+            ['1',       'true', '50', '1/1/2000', None,       '1/1/2000',   None,   '100']])
+        self.assertEqual(c0.most_common(n=1), [('int', 3)])
+        self.assertEqual(c0.types['float'].freq(), 0.25)
         self.assertEqual(c0.size, 10)  # default size
+        self.assertEqual(c0.inferred_col_type(), [('float', 1)])
+        self.assertEqual(c3.most_common(n=1), [('none', 3)])
+        self.assertEqual(c4.most_common(n=1), [('date', 3)])
+        self.assertEqual(c3.inferred_col_type(), [('date', 1)])
+        self.assertEqual(c4.inferred_col_type(), [('date', 3)])
+        self.assertEqual(c5.most_common(n=1), [('none', 3)])
+        self.assertEqual(c5.inferred_col_type(), [('date', 1)])
+        self.assertEqual(c6.most_common(n=1), [('none', 4)])
+        self.assertEqual(c6.inferred_col_type(), [('empty', 4)])
+        self.assertEqual(c7.inferred_col_type(), [('float', 1)])
 
         self.assertEqual(strconv.infer_matrix([]), [])
 
     def test_infer_matrix_n(self):
-        c0, c1, c2 = strconv.infer_matrix([
-            ['+0.4', 'true', '50'],
-            ['+0.3', 'f', '0'],
+        c0, c1, c2, c3, c4 = strconv.infer_matrix([
+            ['+0.4', 'true', '50', None, ''],
+            ['+0.3', 'f', '0', '4', ''],
         ], n=1)
         self.assertEqual(c0.most_common(), [('float', 1)])
+        self.assertEqual(c1.most_common(), [('bool', 1)])
+        self.assertEqual(c2.most_common(), [('int', 1)])
+        self.assertEqual(c3.most_common(), [('none', 1)])
+        self.assertEqual(c4.most_common(), [('none', 1)])
 
 
 class ConverterTestCase(unittest.TestCase):
+    def test_convert_none(self):
+        self.assertEqual(strconv.convert_none(''), None)
+        self.assertEqual(strconv.convert_none('None'), None)
+        self.assertEqual(strconv.convert_none(None), None)
+
     def test_convert_int(self):
         self.assertEqual(strconv.convert_int('0'), 0)
         self.assertEqual(strconv.convert_int('1'), 1)
@@ -146,6 +188,8 @@ class ConverterTestCase(unittest.TestCase):
         self.assertEqual(strconv.convert_date('3/1/2013'), date(2013, 3, 1))
         self.assertEqual(strconv.convert_date('3.1.2013'), date(2013, 3, 1))
         self.assertEqual(strconv.convert_date('Mar 1, 2013'), date(2013, 3, 1))
+        self.assertEqual(strconv.convert_date('31/12/2022'), date(2022, 12, 31))
+        self.assertEqual(strconv.convert_date('2022/12/31'), date(2022, 12, 31))
 
     def test_convert_time(self):
         self.assertEqual(strconv.convert_time('01:30'), time(1, 30, 0))

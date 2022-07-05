@@ -6,11 +6,12 @@ import sys
 from collections import Counter
 from datetime import datetime
 
-__version__ = '0.4.2'
+__version__ = '0.5'
 
 
 class TypeInfo(object):
-    "Sampling and frequency of a type for a sample of values."
+    """Sampling and frequency of a type for a sample of values."""
+
     def __init__(self, name, size=None, total=None):
         self.name = name
         self.count = 0
@@ -40,27 +41,32 @@ class TypeInfo(object):
 
 
 class Types(object):
-    "Type information for a sample of values."
-    def __init__(self, size=None, total=None):
+    """Type information for a sample of values."""
+
+    def __init__(self, size=None, ignore_nulls=True):
         self.size = size
         self.total = None
         self.types = {}
+        self.ignore_nulls = ignore_nulls
 
     def __repr__(self):
-        types = self.most_common()
+        if self.ignore_nulls:
+            types = self.inferred_col_type()
+        else:
+            types = self.most_common()
         label = ', '.join(['{0}={1}'.format(t, i) for t, i in types])
         return '<{0}: {1}>'.format(self.__class__.__name__, label)
 
     def incr(self, t, n=1):
         if t is None:
-            t = 'unknown'
+            t = 'string'
         if t not in self.types:
             self.types[t] = TypeInfo(t, self.size, self.total)
         self.types[t].incr(n)
 
     def add(self, t, i, value):
         if t is None:
-            t = 'unknown'
+            t = 'string'
         if t not in self.types:
             self.types[t] = TypeInfo(t, self.size, self.total)
         self.types[t].add(i, value)
@@ -77,6 +83,22 @@ class Types(object):
         for t in self.types:
             c[t] = self.types[t].count
         return c.most_common(n)
+
+    def inferred_col_type(self):
+        c = Counter()
+        for t in self.types:
+            c[t] = self.types[t].count
+        if c.most_common()[0][0] == 'none':
+            try:
+                if c.most_common()[1][0] == 'int' and 'float' in c:
+                    return [('float', c['float'])]
+                return [c.most_common()[1]]
+            except IndexError:
+                return [('empty', c.most_common()[0][1])]
+
+        if c.most_common()[0][0] == 'int' and 'float' in c:
+            return [('float', c['float'])]
+        return [c.most_common(1)[0]]
 
 
 class Strconv(object):
@@ -116,6 +138,8 @@ class Strconv(object):
         return self.converters[name]
 
     def convert(self, s, include_type=False):
+        if s is None or s == '':
+            s = 'None'
         if isinstance(s, str):
             for t in self._order:
                 func = self.converters[t]
@@ -203,17 +227,23 @@ except ImportError:
                   'datetime formats are supported without timezones.')
     duparse = None
 
-DATE_FORMATS = (
+CORE_DATE_FORMATS = (
     '%Y-%m-%d',
-    '%m-%d-%Y',
+    '%d-%m-%Y',
+    '%d-%m-%y',
+    '%d.%m.%Y',
     '%Y/%m/%d',
-    '%m/%d/%Y',
-    '%m.%d.%Y',
-    '%m-%d-%y',
+    '%d/%m/%Y',
+)
+
+DATE_FORMATS = (
+    *CORE_DATE_FORMATS,
+    '%d %B, %Y',
+    '%d %B, %y',
+    '%d %b, %Y',
+    '%d %b, %y',
     '%B %d, %Y',
-    '%B %d, %y',
     '%b %d, %Y',
-    '%b %d, %y',
 )
 
 TIME_FORMATS = (
@@ -230,6 +260,12 @@ DATE_TIME_SEPS = (' ', 'T')
 
 true_re = re.compile(r'^(t(rue)?|yes)$', re.I)
 false_re = re.compile(r'^(f(alse)?|no)$', re.I)
+
+
+def convert_none(s):
+    if s is None or s == 'None' or s == '':
+        return None
+    raise ValueError
 
 
 def convert_int(s):
@@ -294,7 +330,9 @@ def convert_time(s, time_formats=TIME_FORMATS):
 
 
 # Initialize default instance and make accessible at the module level
+# Note: Order matters!
 default_strconv = Strconv(converters=[
+    ('none', convert_none),
     ('int', convert_int),
     ('float', convert_float),
     ('bool', convert_bool),
